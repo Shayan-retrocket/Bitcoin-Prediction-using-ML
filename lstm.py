@@ -4,9 +4,11 @@ from sklearn.preprocessing import MinMaxScaler
 from sklearn.metrics import mean_squared_error
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import LSTM, Dense
+import matplotlib.pyplot as plt
 
+df = pd.read_csv('BTC-USD.csv')
 
-df = pd.read_csv('BTC-USD.csv')  
+df.fillna(method='ffill', inplace=True)
 
 data = df[['Close']].values.astype(float)
 
@@ -22,7 +24,7 @@ def create_sequences(data, seq_length):
         sequences.append(data[i:i+seq_length])
     return np.array(sequences)
 
-seq_length = 10  
+seq_length = 10
 X_train = create_sequences(train, seq_length)
 y_train = train[seq_length:]
 X_test = create_sequences(test, seq_length)
@@ -48,3 +50,12 @@ test_rmse = np.sqrt(mean_squared_error(y_test, test_preds))
 
 print(f'Training RMSE: {train_rmse}')
 print(f'Testing RMSE: {test_rmse}')
+
+plt.figure(figsize=(12, 6))
+plt.plot(y_test, label='Actual Prices')
+plt.plot(test_preds, label='Predicted Prices')
+plt.title('Bitcoin Price Prediction')
+plt.xlabel('Time')
+plt.ylabel('Price')
+plt.legend()
+plt.show()
