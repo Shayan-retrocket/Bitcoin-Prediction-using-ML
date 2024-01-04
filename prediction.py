@@ -5,14 +5,12 @@ from sklearn.preprocessing import MinMaxScaler
 from sklearn.metrics import mean_squared_error, mean_absolute_error
 from tabulate import tabulate
 from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import LSTM, GRU, SimpleRNN, Dense
-
+from tensorflow.keras.layers import LSTM, GRU, SimpleRNN, Dense, Conv1D, MaxPooling1D, Bidirectional
 
 btc_data = pd.read_csv('BTC-USD.csv', index_col='Date', parse_dates=True)
 
 btc_data['Open_scaled'] = MinMaxScaler().fit_transform(btc_data[['Open']])
 btc_data['Volume_scaled'] = MinMaxScaler().fit_transform(btc_data[['Volume']])
-
 
 date_series = btc_data.index
 btc_data['Date_sin'] = np.sin(2 * np.pi * date_series.dayofyear / 365)
@@ -44,16 +42,18 @@ X_train_multi = np.reshape(X_train_multi, (X_train_multi.shape[0], seq_length, l
 X_test_multi = np.reshape(X_test_multi, (X_test_multi.shape[0], seq_length, len(features)))
 
 model_multi_lstm = Sequential()
-model_multi_lstm.add(LSTM(50, input_shape=(seq_length, len(features)), return_sequences=True))
-model_multi_lstm.add(LSTM(50, return_sequences=True))
-model_multi_lstm.add(LSTM(50))
+model_multi_lstm.add(Conv1D(filters=64, kernel_size=3, activation='relu', input_shape=(seq_length, len(features))))
+model_multi_lstm.add(MaxPooling1D(pool_size=2))
+model_multi_lstm.add(Bidirectional(LSTM(50, return_sequences=True)))
+model_multi_lstm.add(Bidirectional(LSTM(50, return_sequences=True)))
+model_multi_lstm.add(Bidirectional(LSTM(50)))
 model_multi_lstm.add(Dense(1))
 model_multi_lstm.compile(optimizer='adam', loss='mean_squared_error')
 
 model_multi_gru = Sequential()
-model_multi_gru.add(GRU(50, input_shape=(seq_length, len(features)), return_sequences=True))
-model_multi_gru.add(GRU(50, return_sequences=True))
-model_multi_gru.add(GRU(50))
+model_multi_gru.add(Bidirectional(GRU(50, input_shape=(seq_length, len(features)), return_sequences=True)))
+model_multi_gru.add(Bidirectional(GRU(50, return_sequences=True)))
+model_multi_gru.add(Bidirectional(GRU(50)))
 model_multi_gru.add(Dense(1))
 model_multi_gru.compile(optimizer='adam', loss='mean_squared_error')
 
@@ -128,6 +128,6 @@ plt.title('Actual and Predicted Prices (SimpleRNN)')
 plt.xlabel('Date')
 plt.ylabel('Bitcoin Price')
 plt.legend()
- 
+
 plt.tight_layout()
 plt.show()
