@@ -102,13 +102,18 @@ corr_lstm, _ = pearsonr(y_test_inv_multi_lstm.flatten(), y_pred_inv_multi_lstm.f
 corr_gru, _ = pearsonr(y_test_inv_multi_gru.flatten(), y_pred_inv_multi_gru.flatten())
 corr_rnn, _ = pearsonr(y_test_inv_multi_rnn.flatten(), y_pred_inv_multi_rnn.flatten())
 
+std_dev_lstm = np.std(y_test_inv_multi_lstm - y_pred_inv_multi_lstm)
+std_dev_gru = np.std(y_test_inv_multi_gru - y_pred_inv_multi_gru)
+std_dev_rnn = np.std(y_test_inv_multi_rnn - y_pred_inv_multi_rnn)
+
 table = [
-    ['LSTM', rmse_lstm, mae_lstm, mape_lstm, bias_lstm, corr_lstm],
-    ['GRU', rmse_gru, mae_gru, mape_gru, bias_gru, corr_gru],
-    ['SimpleRNN', rmse_rnn, mae_rnn, mape_rnn, bias_rnn, corr_rnn]
+    ['LSTM', rmse_lstm, mae_lstm, mape_lstm, bias_lstm, corr_lstm, std_dev_lstm],
+    ['GRU', rmse_gru, mae_gru, mape_gru, bias_gru, corr_gru, std_dev_gru],
+    ['SimpleRNN', rmse_rnn, mae_rnn, mape_rnn, bias_rnn, corr_rnn, std_dev_rnn]
 ]
 
-print(tabulate(table, headers=['Method', 'RMSE', 'MAE', 'MAPE', 'Bias', 'Correlation'], tablefmt='pretty'))
+
+print(tabulate(table, headers=['Method', 'RMSE', 'MAE', 'MAPE', 'Bias', 'Correlation', 'Std Deviation'], tablefmt='pretty'))
 
 plt.subplot(3, 1, 1)
 plt.plot(btc_data.index[-len(y_test_inv_multi_lstm):], y_test_inv_multi_lstm, label='Actual Prices', color='blue')
