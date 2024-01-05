@@ -6,6 +6,7 @@ from sklearn.metrics import mean_squared_error, mean_absolute_error
 from tabulate import tabulate
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import LSTM, GRU, SimpleRNN, Dense, Conv1D, MaxPooling1D, Bidirectional
+from scipy.stats import pearsonr
 
 btc_data = pd.read_csv('BTC-USD.csv', index_col='Date', parse_dates=True)
 
@@ -97,13 +98,17 @@ mae_rnn = mean_absolute_error(y_test_inv_multi_rnn, y_pred_inv_multi_rnn)
 mape_rnn = np.mean(np.abs((y_test_inv_multi_rnn - y_pred_inv_multi_rnn) / y_test_inv_multi_rnn)) * 100
 bias_rnn = np.mean(y_pred_inv_multi_rnn - y_test_inv_multi_rnn)
 
+corr_lstm, _ = pearsonr(y_test_inv_multi_lstm.flatten(), y_pred_inv_multi_lstm.flatten())
+corr_gru, _ = pearsonr(y_test_inv_multi_gru.flatten(), y_pred_inv_multi_gru.flatten())
+corr_rnn, _ = pearsonr(y_test_inv_multi_rnn.flatten(), y_pred_inv_multi_rnn.flatten())
+
 table = [
-    ['LSTM', rmse_lstm, mae_lstm, mape_lstm, bias_lstm],
-    ['GRU', rmse_gru, mae_gru, mape_gru, bias_gru],
-    ['SimpleRNN', rmse_rnn, mae_rnn, mape_rnn, bias_rnn]
+    ['LSTM', rmse_lstm, mae_lstm, mape_lstm, bias_lstm, corr_lstm],
+    ['GRU', rmse_gru, mae_gru, mape_gru, bias_gru, corr_gru],
+    ['SimpleRNN', rmse_rnn, mae_rnn, mape_rnn, bias_rnn, corr_rnn]
 ]
 
-print(tabulate(table, headers=['Method', 'RMSE', 'MAE', 'MAPE', 'Bias'], tablefmt='pretty'))
+print(tabulate(table, headers=['Method', 'RMSE', 'MAE', 'MAPE', 'Bias', 'Correlation'], tablefmt='pretty'))
 
 plt.subplot(3, 1, 1)
 plt.plot(btc_data.index[-len(y_test_inv_multi_lstm):], y_test_inv_multi_lstm, label='Actual Prices', color='blue')
