@@ -5,8 +5,14 @@ from sklearn.preprocessing import MinMaxScaler
 from sklearn.metrics import mean_squared_error, mean_absolute_error
 from tabulate import tabulate
 from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import LSTM, GRU, SimpleRNN, Dense, Conv1D, MaxPooling1D, Bidirectional
+from tensorflow.keras.layers import LSTM, GRU, SimpleRNN , Conv1D, MaxPooling1D, Bidirectional, Dense, BatchNormalization, Dropout
 from scipy.stats import pearsonr
+from tensorflow.keras.optimizers import Adam
+from tensorflow.keras.layers import BatchNormalization
+from tensorflow.keras.callbacks import EarlyStopping , LearningRateScheduler
+
+
+
 
 btc_data = pd.read_csv('BTC-USD.csv', index_col='Date', parse_dates=True)
 
@@ -29,8 +35,15 @@ def create_sequences_multi(data, seq_length):
         targets.append(target)
     return np.array(sequences), np.array(targets)
 
+def lr_schedule(epoch, lr):
+    if epoch < 10:
+        return lr
+    else:
+        return lr * 0.9 
+    
+
 seq_length = 10  
-epochs = 50
+epochs = 150
 batch_size = 64
 
 sequences_multi, targets_multi = create_sequences_multi(data_scaled, seq_length)
@@ -43,29 +56,58 @@ X_train_multi = np.reshape(X_train_multi, (X_train_multi.shape[0], seq_length, l
 X_test_multi = np.reshape(X_test_multi, (X_test_multi.shape[0], seq_length, len(features)))
 
 model_multi_lstm = Sequential()
+
 model_multi_lstm.add(Conv1D(filters=64, kernel_size=3, activation='relu', input_shape=(seq_length, len(features))))
 model_multi_lstm.add(MaxPooling1D(pool_size=2))
+
 model_multi_lstm.add(Bidirectional(LSTM(50, return_sequences=True)))
+model_multi_lstm.add(BatchNormalization())
+model_multi_lstm.add(Dropout(0.2)) 
 model_multi_lstm.add(Bidirectional(LSTM(50, return_sequences=True)))
+model_multi_lstm.add(BatchNormalization())
+model_multi_lstm.add(Dropout(0.2))  
 model_multi_lstm.add(Bidirectional(LSTM(50)))
+model_multi_lstm.add(BatchNormalization())
+model_multi_lstm.add(Dropout(0.2)) 
 model_multi_lstm.add(Dense(1))
-model_multi_lstm.compile(optimizer='adam', loss='mean_squared_error')
+optimizer_lstm = Adam(learning_rate=0.01)
+model_multi_lstm.compile(optimizer=optimizer_lstm, loss='mean_squared_error')
+lr_scheduler_lstm = LearningRateScheduler(lr_schedule)
+early_stopping = EarlyStopping(monitor='val_loss', patience=10, restore_best_weights=True)
+
+
+
+
+
 
 model_multi_gru = Sequential()
+model_multi_gru.add(Conv1D(filters=64, kernel_size=3, activation='relu', input_shape=(seq_length, len(features))))
 model_multi_gru.add(Bidirectional(GRU(50, input_shape=(seq_length, len(features)), return_sequences=True)))
+model_multi_lstm.add(BatchNormalization())  
 model_multi_gru.add(Bidirectional(GRU(50, return_sequences=True)))
+model_multi_lstm.add(BatchNormalization())  
 model_multi_gru.add(Bidirectional(GRU(50)))
+model_multi_lstm.add(BatchNormalization())  
 model_multi_gru.add(Dense(1))
-model_multi_gru.compile(optimizer='adam', loss='mean_squared_error')
+optimizer_gru = Adam(learning_rate=0.01)  
+model_multi_gru.compile(optimizer=optimizer_gru, loss='mean_squared_error')
+
+
+
+
 
 model_multi_rnn = Sequential()
 model_multi_rnn.add(SimpleRNN(50, input_shape=(seq_length, len(features)), return_sequences=True))
 model_multi_rnn.add(SimpleRNN(50, return_sequences=True))
 model_multi_rnn.add(SimpleRNN(50))
 model_multi_rnn.add(Dense(1))
-model_multi_rnn.compile(optimizer='adam', loss='mean_squared_error')
+optimizer_rnn = Adam(learning_rate=0.01)  
+model_multi_rnn.compile(optimizer=optimizer_rnn, loss='mean_squared_error')
+
+
 
 history_multi_lstm = model_multi_lstm.fit(X_train_multi, y_train_multi, epochs=epochs, batch_size=batch_size, validation_data=(X_test_multi, y_test_multi), verbose=2)
+
 
 history_multi_gru = model_multi_gru.fit(X_train_multi, y_train_multi, epochs=epochs, batch_size=batch_size, validation_data=(X_test_multi, y_test_multi), verbose=2)
 
@@ -105,6 +147,10 @@ corr_rnn, _ = pearsonr(y_test_inv_multi_rnn.flatten(), y_pred_inv_multi_rnn.flat
 std_dev_lstm = np.std(y_test_inv_multi_lstm - y_pred_inv_multi_lstm)
 std_dev_gru = np.std(y_test_inv_multi_gru - y_pred_inv_multi_gru)
 std_dev_rnn = np.std(y_test_inv_multi_rnn - y_pred_inv_multi_rnn)
+
+
+
+
 
 table = [
     ['LSTM', rmse_lstm, mae_lstm, mape_lstm, bias_lstm, corr_lstm, std_dev_lstm],
