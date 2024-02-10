@@ -15,18 +15,24 @@ import tensorflow as tf
 
 btc_data = pd.read_csv('BTC-USD.csv', index_col='Date', parse_dates=True)
 
-btc_data['Open_scaled'] = MinMaxScaler().fit_transform(btc_data[['Open']])
-btc_data['Volume_scaled'] = MinMaxScaler().fit_transform(btc_data[['Volume']])
-btc_data['High_scaled'] = MinMaxScaler().fit_transform(btc_data[['High']])
-btc_data['Low_scaled'] = MinMaxScaler().fit_transform(btc_data[['Low']])
-
 date_series = btc_data.index
 btc_data['Date_sin'] = np.sin(2 * np.pi * date_series.dayofyear / 365)
 btc_data['Date_cos'] = np.cos(2 * np.pi * date_series.dayofyear / 365)
 
-features = ['Close', 'Date_sin', 'Open_scaled' , 'Volume_scaled',  'Date_cos' , 'High_scaled' ,'Low_scaled' ]
-data_scaled = MinMaxScaler().fit_transform(btc_data[features])
-btc_data['Close_scaled'] = MinMaxScaler().fit_transform(btc_data[['Close']])
+btc_data.drop(["Adj Close", "Volume"], inplace=True, axis=1)
+k = 5
+
+data_scaled = MinMaxScaler().fit_transform(btc_data)
+
+selector = SelectKBest(mutual_info_regression, k=k)
+
+X_new = selector.fit_transform(data_scaled[:, :k], data_scaled[:, 3])
+
+selected_features = X_new.reshape(-1, k)
+
+seq_length = 10
+epochs = 150
+batch_size = 16
 
 def create_sequences_multi(data, seq_length):
     sequences, targets = [], []
@@ -38,10 +44,6 @@ def create_sequences_multi(data, seq_length):
     return np.array(sequences), np.array(targets)
 
 
-
-seq_length = 10
-epochs = 250
-batch_size = 16
 num_runs = 10
 results = []
 
@@ -72,22 +74,10 @@ best_rmse = {'LSTM': float('inf'), 'GRU': float('inf'), 'RNN': float('inf')}
 
 
 for run in range(num_runs):
-
-    targets_multi = MinMaxScaler().fit_transform(btc_data[['Close']])
-
-    mutual_info_values = mutual_info_regression(data_scaled.reshape(-1, len(features)), targets_multi)
-
-    k = 5  
-    selector = SelectKBest(mutual_info_regression, k=k)
-    selected_features = selector.fit_transform(data_scaled.reshape(-1, len(features)), targets_multi)
-    sequences_multi, targets_multi = create_sequences_multi(selected_features, seq_length)
-
-    selected_features = selected_features.reshape(-1, k)  
-
-  
     sequences_multi, targets_multi = create_sequences_multi(selected_features, seq_length)
     split_multi = int(0.8 * len(sequences_multi))
-
+    X_train_multi, y_train_multi = sequences_multi[:split_multi], targets_multi[:split_multi]
+    X_test_multi, y_test_multi = sequences_multi[split_multi:], targets_multi[split_multi:]
 
     
     X_train_multi, y_train_multi = sequences_multi[:split_multi], targets_multi[:split_multi].ravel()
@@ -259,25 +249,36 @@ for _, result in all_results.iterrows():
 table = tabulate(formatted_results, headers='keys', tablefmt='pretty')
 print(table)
 
-# Plot actual vs. predicted prices for the best model in each method
-
 
 plt.figure(figsize=(15, 8))
 y_test_inv = MinMaxScaler().fit(btc_data[['Close']]).inverse_transform(y_test_multi.reshape(-1, 1))
-plt.plot(date_series[split_multi + seq_length:], y_test_inv, label=f'Actual Price ', linewidth=2)
+plt.plot(date_series[split_multi + seq_length:], y_test_inv, label=f'Actual Price ', color='grey', linestyle='solid', linewidth=1)
 
 for method, best_model in best_models.items():
+
+    if best_model is not None:
+        model_filename = f'best_model_{method}.h5'
+        best_model.save(model_filename)
+        print(f'{method} model saved as {model_filename}')
+
     X_test = np.reshape(X_test_multi, (X_test_multi.shape[0], seq_length, k))
     y_pred = best_model.predict(X_test)
 
     y_pred_inv = MinMaxScaler().fit(btc_data[['Close']]).inverse_transform(y_pred)
     y_test_inv = MinMaxScaler().fit(btc_data[['Close']]).inverse_transform(y_test_multi.reshape(-1, 1))
 
-    plt.plot(date_series[split_multi + seq_length:], y_pred_inv, label=f'Predicted Price - {method}', linewidth=2)
+    linestyle = 'dashed'
+    linewidth = 1
+    if(method == 'LSTM'):
+        linestyle = 'dotted'
+    elif(method == 'GRU'):
+        linestyle = 'solid'
+        linewidth = 2
+    plt.plot(date_series[split_multi + seq_length:], y_pred_inv, label=f'Predicted Price - {method}', color='black', linestyle=linestyle, linewidth=linewidth)
 
-plt.title('Actual vs. Predicted Prices for Best Models')
-plt.xlabel('Date')
-plt.ylabel('Price')
+plt.title('')
+plt.xlabel('')
+plt.ylabel('')
 plt.legend()
 plt.show()
 
