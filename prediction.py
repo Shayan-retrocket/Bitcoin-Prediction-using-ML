@@ -15,22 +15,24 @@ from tensorflow.keras.regularizers import l2
 
 btc_data = pd.read_csv('BTC-USD.csv', index_col='Date', parse_dates=True)
 
-btc_data['Open_scaled'] = MinMaxScaler().fit_transform(btc_data[['Open']])
-btc_data['Volume_scaled'] = MinMaxScaler().fit_transform(btc_data[['Volume']])
-btc_data['High_scaled'] = MinMaxScaler().fit_transform(btc_data[['High']])
-btc_data['Low_scaled'] = MinMaxScaler().fit_transform(btc_data[['Low']])
-
 date_series = btc_data.index
 btc_data['Date_sin'] = np.sin(2 * np.pi * date_series.dayofyear / 365)
 btc_data['Date_cos'] = np.cos(2 * np.pi * date_series.dayofyear / 365)
 
-features = ['Close', 'Date_sin', 'Open_scaled', 'Volume_scaled', 'Date_cos', 'High_scaled', 'Low_scaled']
-data_scaled = MinMaxScaler().fit_transform(btc_data[features])
-btc_data['Close_scaled'] = MinMaxScaler().fit_transform(btc_data[['Close']])
+btc_data.drop(["Adj Close", "Volume"], inplace=True, axis=1)
+k = 5
 
-seq_length = 10 
+data_scaled = MinMaxScaler().fit_transform(btc_data)
+
+selector = SelectKBest(mutual_info_regression, k=k)
+
+X_new = selector.fit_transform(data_scaled[:, :k], data_scaled[:, 3])
+
+selected_features = X_new.reshape(-1, k)
+
+seq_length = 10
 epochs = 150
-batch_size = 32
+batch_size = 16
 
 def create_sequences_multi(data, seq_length):
     sequences, targets = [], []
@@ -40,7 +42,6 @@ def create_sequences_multi(data, seq_length):
         sequences.append(seq)
         targets.append(target)
     return np.array(sequences), np.array(targets)
-
 
 class CentralizedWeightLayer(Layer):
     def __init__(self, **kwargs):
@@ -64,32 +65,15 @@ class CentralizedWeightLayer(Layer):
         return input_shape
 
 
-targets_multi = MinMaxScaler().fit_transform(btc_data[['Close']])
-
-# Calculate mutual information values
-mutual_info_values = mutual_info_regression(data_scaled.reshape(-1, len(features)), targets_multi)
-
-# Select top-k features
-k = 5  # Choose the number of top features
-selector = SelectKBest(mutual_info_regression, k=k)
-selected_features = selector.fit_transform(data_scaled.reshape(-1, len(features)), targets_multi)
-sequences_multi, targets_multi = create_sequences_multi(selected_features, seq_length)
-
-# Reshape selected features
-selected_features = selected_features.reshape(-1, k)  # Remove seq_length from the reshape
-
-# Split into training and testing sets
 sequences_multi, targets_multi = create_sequences_multi(selected_features, seq_length)
 split_multi = int(0.8 * len(sequences_multi))
 X_train_multi, y_train_multi = sequences_multi[:split_multi], targets_multi[:split_multi]
 X_test_multi, y_test_multi = sequences_multi[split_multi:], targets_multi[split_multi:]
 
-# Now, you can use X_train_multi and X_test_multi in your model training
-
 model_multi_lstm = Sequential()
 model_multi_lstm.add(Conv1D(filters=64, kernel_size=3, activation='relu', input_shape=(seq_length, k)))
 model_multi_lstm.add(MaxPooling1D(pool_size=2))
-model_multi_lstm.add(Bidirectional(LSTM(50, input_shape=(seq_length, k) ,return_sequences=True)))
+model_multi_lstm.add(Bidirectional(LSTM(50, input_shape=(seq_length, k), return_sequences=True)))
 model_multi_lstm.add(CentralizedWeightLayer())
 model_multi_lstm.add(BatchNormalization())
 model_multi_lstm.add(Dropout(0.1))
@@ -130,14 +114,15 @@ model_multi_rnn = Sequential()
 model_multi_rnn.add(Conv1D(filters=64, kernel_size=3, activation='relu', input_shape=(seq_length, k)))
 model_multi_rnn.add(SimpleRNN(50, input_shape=(seq_length,k), return_sequences=True) )
 model_multi_rnn.add(BatchNormalization())
-model_multi_gru.add(CentralizedWeightLayer()) 
+model_multi_rnn.add(CentralizedWeightLayer()) 
 model_multi_rnn.add(SimpleRNN(50, return_sequences=True))
 model_multi_rnn.add(BatchNormalization())
-model_multi_gru.add(CentralizedWeightLayer()) 
+model_multi_rnn.add(CentralizedWeightLayer()) 
 model_multi_rnn.add(SimpleRNN(50))
 model_multi_rnn.add(Dense(1,kernel_regularizer=l2(0.01)))
 optimizer_rnn = Adam(learning_rate=0.001)  
 model_multi_rnn.compile(optimizer=optimizer_rnn, loss='mean_squared_error')
+
 
 
 
@@ -185,38 +170,42 @@ r2_gru = r2_score(y_test_inv_multi_gru, y_pred_inv_multi_gru)
 r2_rnn = r2_score(y_test_inv_multi_rnn, y_pred_inv_multi_rnn)
 
 
+
 table = [
     ['LSTM', round(rmse_lstm, 4), round(mae_lstm, 4), round(mape_lstm, 4), round(bias_lstm, 4), round(corr_lstm, 4), round(std_dev_lstm, 4), round(r2_lstm, 4)],
     ['GRU', round(rmse_gru, 4), round(mae_gru, 4), round(mape_gru, 4), round(bias_gru, 4), round(corr_gru, 4), round(std_dev_gru, 4), round(r2_gru, 4)],
     ['SimpleRNN', round(rmse_rnn, 4), round(mae_rnn, 4), round(mape_rnn, 4), round(bias_rnn, 4), round(corr_rnn, 4), round(std_dev_rnn, 4), round(r2_rnn, 4)]
 ]
 
-print(tabulate(table, headers=['Method', 'RMSE', 'MAE', 'MAPE', 'Bias', 'Correlation', 'Std Deviation' , 'R2' , 'Accuracy'], tablefmt='pretty'))
+print(tabulate(table, headers=['Method', 'RMSE', 'MAE', 'MAPE', 'Bias', 'Correlation', 'Std Deviation' , 'R2'], tablefmt='pretty'))
 
+# Plotting actual and predicted prices
 
 plt.subplot(3, 1, 1)
-plt.plot(btc_data.index[-len(y_test_inv_multi_lstm):], y_test_inv_multi_lstm, label='Actual Prices', color='blue')
-plt.plot(btc_data.index[-len(y_pred_inv_multi_lstm):], y_pred_inv_multi_lstm, label='Predicted Prices (LSTM)', color='orange')
+plt.plot(btc_data.index[-len(y_test_inv_multi_lstm):], y_test_inv_multi_lstm, label='Actual Prices', color='black', linestyle='-', linewidth=1)
+plt.plot(btc_data.index[-len(y_pred_inv_multi_lstm):], y_pred_inv_multi_lstm, label='Predicted Prices (LSTM)', color='black', linestyle='-', linewidth=2)
 plt.title('Actual and Predicted Prices (LSTM)')
 plt.xlabel('Date')
 plt.ylabel('Bitcoin Price')
 plt.legend()
 
-
 plt.subplot(3, 1, 2)
-plt.plot(btc_data.index[-len(y_test_inv_multi_gru):], y_test_inv_multi_gru, label='Actual Prices', color='blue')
-plt.plot(btc_data.index[-len(y_pred_inv_multi_gru):], y_pred_inv_multi_gru, label='Predicted Prices (GRU)', color='green')
+plt.plot(btc_data.index[-len(y_test_inv_multi_gru):], y_test_inv_multi_gru, label='Actual Prices', color='black', linestyle='-', linewidth=1)
+plt.plot(btc_data.index[-len(y_pred_inv_multi_gru):], y_pred_inv_multi_gru, label='Predicted Prices (GRU)', color='black', linestyle='-', linewidth=2)
 plt.title('Actual and Predicted Prices (GRU)')
 plt.xlabel('Date')
 plt.ylabel('Bitcoin Price')
 plt.legend()
 
+
+
 plt.subplot(3, 1, 3)
-plt.plot(btc_data.index[-len(y_test_inv_multi_rnn):], y_test_inv_multi_rnn, label='Actual Prices', color='blue')
-plt.plot(btc_data.index[-len(y_pred_inv_multi_rnn):], y_pred_inv_multi_rnn, label='Predicted Prices (SimpleRNN)', color='red')
+plt.plot(btc_data.index[-len(y_test_inv_multi_rnn):], y_test_inv_multi_rnn, label='Actual Prices', color='black', linestyle='-', linewidth=1)
+plt.plot(btc_data.index[-len(y_pred_inv_multi_rnn):], y_pred_inv_multi_rnn, label='Predicted Prices (SimpleRNN)', color='black', linestyle='-', linewidth=2)
 plt.title('Actual and Predicted Prices (SimpleRNN)')
 plt.xlabel('Date')
 plt.ylabel('Bitcoin Price')
 plt.legend()
+
 
 plt.show()
